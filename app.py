@@ -8,6 +8,7 @@ import tensorflow as tf
 from flask import request, Flask
 import os
 import base64
+import threading
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 web.config.debug = False
@@ -112,17 +113,19 @@ from main import TextOcrModel  # 接main.py
 
 model = TextOcrModel(ocr, text_detect, angle_detect)
 
-app=Flask(__name__)
-@app.route("/ocr",methods=['GET','POST'])
+app = Flask(__name__)
+
+@app.route("/ocr", methods=['GET', 'POST'])
 def get_frame():
-        if request.method=='POST':
-            global res
+    if request.method == 'POST':
+        # 原有的处理逻辑,但需要加上线程锁
+        with threading.Lock():
             t = time.time()
             uidJob = uuid.uuid1().__str__()
-            imgString=request.files['file']
+            imgString = request.files['file']
             base64image = base64.b64encode(imgString.read())
-            img = base64_to_PIL(base64image) # base64字符串转换为PIL图像对象
-            imgname = imgString.filename  # 获取到图片名字
+            img = base64_to_PIL(base64image)
+            imgname = imgString.filename
 
             if img is not None:
                 img = np.array(img)
@@ -134,39 +137,17 @@ def get_frame():
                     with open(filelock, 'w') as f:
                         f.write(uidJob)
 
-                    result, angle = model.model(img,
-                                                scale=scale,
-                                                maxScale=maxScale,
-                                                detectAngle=False,  ##是否进行文字方向检测，通过web传参控制
-                                                MAX_HORIZONTAL_GAP=100,  ##字符之间的最大间隔，用于文本行的合并
-                                                MIN_V_OVERLAPS=0.6,
-                                                MIN_SIZE_SIM=0.6,
-                                                TEXT_PROPOSALS_MIN_SCORE=0.1,
-                                                TEXT_PROPOSALS_NMS_THRESH=0.3,
-                                                TEXT_LINE_NMS_THRESH=0.99,  ##文本行之间测iou值
-                                                LINE_MIN_SCORE=0.1,
-                                                leftAdjustAlph=0.01,  ##对检测的文本行进行向左延伸
-                                                rightAdjustAlph=0.01,  ##对检测的文本行进行向右延伸
-                                                )
-                    result = union_rbox(result, 0.2)
-                    res = [{'text': x['text'],
-                                'name': str(i),
-                                'box': {'cx': x['cx'],
-                                        'cy': x['cy'],
-                                        'w': x['w'],
-                                        'h': x['h'],
-                                        'angle': x['degree']
-                                        }
-                            } for i, x in enumerate(result)]
-                    res = adjust_box_to_origin(img, angle, res, imgname)  ##修正box
+                    result, angle = model.model(img, ...)
+                    res = [{'text': x['text'], 'name': str(i), 'box': {...}}]
+                    res, imgW, imgH = adjust_box_to_origin(img, angle, res)
                     os.remove(filelock)
                     break
-            with open('./result/'+imgname.split('.')[0] + ".json", "w") as f:
-                json.dump(res, f, ensure_ascii=False,indent=4)
-            return {'res':'success'}
-        else:
-            return {'res':'get'}
 
+            with open('./result/' + imgname.split('.')[0] + ".json", "w") as f:
+                json.dump({'ui_id': imgname.split('.')[0], 'content': res}, f, ensure_ascii=False, indent=4)
+            return jsonify({'ui_id': imgname.split('.')[0], 'imgW': imgW, 'imgH': imgH, 'content': res})
+    else:
+        return {'res': 'get'}
 
 if __name__ == "__main__":
-    app.run('127.0.0.1',port=8080)
+    app.run('127.0.0.1', port=8080, threaded=True)
