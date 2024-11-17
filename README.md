@@ -1,4 +1,5 @@
-## The project is based on [yolo3](https://github.com/pjreddie/darknet.git) and [crnn](https://github.com/meijieru/crnn.pytorch.git) for Chinese natural scene text detection and recognition. 
+## OCR - modified for Bait and Switch patterns detection
+The project is based on [ChineseOCR](https://github.com/chineseocr/chineseocr) for Chinese natural scene text detection and recognition. Thanks a lot!!!
 
 ## Environment Setup
 
